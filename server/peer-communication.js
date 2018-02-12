@@ -14,10 +14,11 @@ const secp256k1 = require('secp256k1')
 const { pk2id } = require('/imports/devp2p/util.js')
 
 
-const PRIVATE_KEY = randomBytes(32)
+//const PRIVATE_KEY = randomBytes(32)
+const PRIVATE_KEY = Buffer.from('b772e3d6a001a38064dd23964dd2836239fa0e6cec8b28972a87460a17210fe9','hex')
 const CHAIN_ID = 1
 
-const search_Key = 'd772e3d6a001a38064dd23964dd2836239fa0e6cec8b28972a87460a17210fe9'
+const search_Key = 'a772e3d6a001a38064dd23964dd2836239fa0e6cec8b28972a87460a17210fe9'
 const search_id = pk2id(secp256k1.publicKeyCreate(Buffer.from(search_Key,'hex'), false))
 
 
@@ -54,20 +55,28 @@ const search_peer = new SearchPeer({
   dpt:dpt,
   findneighbours:dpt._server.findneighbours,
   max_concurrents:20,
-  max_polls:250
+  max_polls:800
 })
 
-search_peer.on('found',(peer) => {
-  if (peer !== null)
-    console.log("Id: "+peer.id+
-      " address:"+peer.address+
-      " udp port:"+peer.udpPort+
-      " tcp port:"+peer.tcpPort)
+search_peer.on('found',(result) => {
+  peer = result.peer
+  if (peer !== null) {
+    var id=""
+    for(let b of peer.id) {s="00"+b.toString(16);id=id+s.substr(s.length-2)}
+    console.log("Id:"+id+
+      " address:"+peer.endpoint.address+
+      " udp port:"+peer.endpoint.udpPort+
+      " tcp port:"+peer.endpoint.tcpPort+
+      " Search polls:"+result.polls)
+  }
   else
-    console.error("Search failed.");
+    console.error("Search failed. Closest distance:"+result.distance);
 });
 //const addr = dpt._server._socket.address().address
 //const port = dpt._server._socket.address().port
+
+const dist = search_peer._distance(search_id,dpt._id)
+console.log(dist)
 
 dpt.on('error', (err) => console.error(chalk.red(`DPT error: ${err}`)))
 
@@ -91,7 +100,7 @@ rlpx.on('peer:added', (peer) => {
   const requests = { headers: [], bodies: [], msgTypes: {} }
 
   const clientId = peer.getHelloMessage().clientId
-  console.log(chalk.green(`Add peer: ${addr} ${clientId} (eth${eth.getVersion()}) (total: ${rlpx.getPeers().length})`))
+  //console.log(chalk.green(`Add peer: ${addr} ${clientId} (eth${eth.getVersion()}) (total: ${rlpx.getPeers().length})`))
 
   eth.sendStatus({
     networkId: CHAIN_ID,
@@ -159,7 +168,7 @@ rlpx.on('peer:added', (peer) => {
       case devp2p.ETH.MESSAGE_CODES.BLOCK_HEADERS:
         if (!forkVerified) {
           if (payload.length !== 1) {
-            console.log(`${addr} expected one header for ${CHECK_BLOCK_TITLE} verify (received: ${payload.length})`)
+            //console.log(`${addr} expected one header for ${CHECK_BLOCK_TITLE} verify (received: ${payload.length})`)
             peer.disconnect(devp2p.RLPx.DISCONNECT_REASONS.USELESS_PEER)
             break
           }
@@ -167,13 +176,13 @@ rlpx.on('peer:added', (peer) => {
           const expectedHash = CHECK_BLOCK
           const header = new EthereumBlock.Header(payload[0])
           if (header.hash().toString('hex') === expectedHash) {
-            console.log(`${addr} verified to be on the same side of the ${CHECK_BLOCK_TITLE}`)
+            //console.log(`${addr} verified to be on the same side of the ${CHECK_BLOCK_TITLE}`)
             clearTimeout(forkDrop)
             forkVerified = true
           }
         } else {
           if (payload.length > 1) {
-            console.log(`${addr} not more than one block header expected (received: ${payload.length})`)
+            //console.log(`${addr} not more than one block header expected (received: ${payload.length})`)
             break
           }
 
@@ -192,7 +201,7 @@ rlpx.on('peer:added', (peer) => {
           }
 
           if (!isValidPayload) {
-            console.log(`${addr} received wrong block header ${header.hash().toString('hex')}`)
+            //console.log(`${addr} received wrong block header ${header.hash().toString('hex')}`)
           }
         }
 
@@ -210,7 +219,7 @@ rlpx.on('peer:added', (peer) => {
         if (!forkVerified) break
 
         if (payload.length !== 1) {
-          console.log(`${addr} not more than one block body expected (received: ${payload.length})`)
+          //console.log(`${addr} not more than one block body expected (received: ${payload.length})`)
           break
         }
 
@@ -227,7 +236,7 @@ rlpx.on('peer:added', (peer) => {
         }
 
         if (!isValidPayload) {
-          console.log(`${addr} received wrong block body`)
+          //console.log(`${addr} received wrong block body`)
         }
 
         break
@@ -269,7 +278,7 @@ rlpx.on('peer:added', (peer) => {
 rlpx.on('peer:removed', (peer, reasonCode, disconnectWe) => {
   const who = disconnectWe ? 'we disconnect' : 'peer disconnect'
   const total = rlpx.getPeers().length
-  console.log(chalk.yellow(`Remove peer: ${getPeerAddr(peer)} - ${who}, reason: ${peer.getDisconnectPrefix(reasonCode)} (${String(reasonCode)}) (total: ${total})`))
+  //console.log(chalk.yellow(`Remove peer: ${getPeerAddr(peer)} - ${who}, reason: ${peer.getDisconnectPrefix(reasonCode)} (${String(reasonCode)}) (total: ${total})`))
 })
 
 rlpx.on('peer:error', (peer, err) => {
@@ -296,7 +305,7 @@ for (let bootnode of BOOTNODES) {
   })
 }
 
-search_peer.StartSearching(search_id,dpt.getClosestPeers(search_id))
+//search_peer.StartSearching(search_id,dpt.getClosestPeers(search_id))
 
 // connect to local ethereum node (debug)
 /*
@@ -317,7 +326,7 @@ function onNewTx (tx, peer) {
   if (txCache.has(txHashHex)) return
 
   txCache.set(txHashHex, true)
-  console.log(`New tx: ${txHashHex} (from ${getPeerAddr(peer)})`)
+  //console.log(`New tx: ${txHashHex} (from ${getPeerAddr(peer)})`)
 }
 
 const blocksCache = new LRUCache({ max: 100 })
@@ -327,9 +336,9 @@ function onNewBlock (block, peer) {
   if (blocksCache.has(blockHashHex)) return
 
   blocksCache.set(blockHashHex, true)
-  console.log(`----------------------------------------------------------------------------------------------------------`)
-  console.log(`New block ${blockNumber}: ${blockHashHex} (from ${getPeerAddr(peer)})`)
-  console.log(`----------------------------------------------------------------------------------------------------------`)
+  //console.log(`----------------------------------------------------------------------------------------------------------`)
+  //console.log(`New block ${blockNumber}: ${blockHashHex} (from ${getPeerAddr(peer)})`)
+  //console.log(`----------------------------------------------------------------------------------------------------------`)
   for (let tx of block.transactions) onNewTx(tx, peer)
 }
 
@@ -357,6 +366,7 @@ setInterval(() => {
   const queueLength = rlpx._peersQueue.length
   const queueLength2 = rlpx._peersQueue.filter((o) => o.ts <= Date.now()).length
   search_peer.StartSearching(search_id,dpt.getClosestPeers(search_id))
+  //search_peer.StartSearching(dpt._id,dpt.getClosestPeers(dpt._id))
 
   console.log(chalk.yellow(`Total nodes in DPT: ${peersCount}, open slots: ${openSlots}, queue: ${queueLength} / ${queueLength2}`))
 }, ms('30s'))

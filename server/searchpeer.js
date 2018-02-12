@@ -1,5 +1,6 @@
 //file:searchpeer.js Author:shifa version 0.1
 //const kbucket = require('k-bucket')
+const Buffer = require('safe-buffer').Buffer
 
 const { EventEmitter } = require('events')
 
@@ -15,16 +16,24 @@ export class SearchPeer extends EventEmitter {
     this.max_concurr = options.max_concurrents
     this.max_polls = options.max_polls
     this.findneighbours = options.findneighbours
+    this.closest_distance=0
 
     options.dpt._server.on('peersInfo', (peers) => {
       if (this.searching) {
         if (this.concurrents>0)
           this.concurrents += -1
+        this.polls +=1;
         this._addSearching_list(peers)
         if (this.searching && this.polls>=this.max_polls
            && this.concurrents==0) {
           this.searching = false
-          this.emit('found',null)
+          var dist = this.closest_distance
+          var i
+          for (i=0;i<512;i++) {
+            if(dist < 1) break
+            dist = dist/2
+          }
+          this.emit('found',{peer:null,distance:i})
         }
       }
     })
@@ -43,13 +52,14 @@ export class SearchPeer extends EventEmitter {
     this.concurrents = 0
     this.polls = 0
     this.searching = true
+    this.closest_distance = 256**id.length - 1
     const peersInfo = peers.map((peer) => {
       return ({id:peer.id,
        endpoint:{address: peer.address,
        tcpPort:peer.tcpPort,udpPort:peer.udpPort}})
     })
     this._addSearching_list(peersInfo)
-    setTimeout(this._dec_concurr,10000)
+    setTimeout(this._dec_concurr,2000)
     return true
   }
 
@@ -59,15 +69,15 @@ export class SearchPeer extends EventEmitter {
     if (this.concurrents>0)
       this.concurrents += -1
     this._addSearching_list()
-    setTimeout(this._dec_concurr,10000)
+    setTimeout(this._dec_concurr,2000)
   }
 
   _addSearching_list = (peers) => {
     if (peers !== undefined && peers !== null)
     for(let peer of peers) {
-      if (peer.id === this.id) {
+      if (!Buffer.compare(peer.id,this.id)) {
         this.searching = false
-        this.emit('found',peer)
+        this.emit('found',{peer:peer,polls:this.polls})
         return
       }
       if (!this.searched_list.includes(peer.id) &&
@@ -77,37 +87,44 @@ export class SearchPeer extends EventEmitter {
     while (this.searching_list.length>0 && this.searching && 
         this.concurrents<this.max_concurr &&
         this.polls < this.max_polls ) {
-      const peer_closest = SearchPeer.find_closest(this.searching_list,this.id)
-      this.searching_list.pop(peer_closest)
-      this.searched_list.push(peer_closest.id)
+      const peer_closest = this._get_closest()
+      //this.searching_list.pop(peer_closest.peer)
+      this.searched_list.push(peer_closest.peer.id)
       this.concurrents +=1;
-      this.polls +=1;
-      this.findneighbours(peer_closest.endpoint)
+      //this.polls +=1;
+      if (peer_closest.distance < this.closest_distance)
+        this.closest_distance = peer_closest.distance
+      this.findneighbours(peer_closest.peer.endpoint)
     }
   }
-}
 
-SearchPeer.find_closest = function(list, id){
-  var distance=256**id.length-1;
-  var closest_peer=null;
-  for (let peer of list)
-  {
-    const distance1 = SearchPeer.distance(peer.id,id);
-    if (distance1<distance) {
-      distance = distance1;
-      closest_peer = peer;
+  _get_closest = () => {
+    var distance=256**this.id.length-1;
+    const len = this.searching_list.length
+    var close_idx
+    for (let i=0; i<len; i++ )
+    {
+      const distance1 = this._distance(this.searching_list[i].id,this.id);
+      if (distance1<distance) {
+        distance = distance1
+        close_idx = i
+      }
     }
+    var closest_peer=this.searching_list[close_idx];
+    this.searching_list[close_idx]=this.searching_list[len-1]
+    this.searching_list.pop()
+    //this.searching_list.slice(close_idx,1)
+    return {peer:closest_peer,distance:distance};
   }
-  return closest_peer;
-}
 
 
-SearchPeer.distance = function (firstId, secondId) {
+  _distance = function (firstId, secondId) {
   var distance = 0
   var min = Math.min(firstId.length, secondId.length)
   var max = Math.max(firstId.length, secondId.length)
   for (var i = 0; i < min; ++i) distance = distance * 256 + (firstId[i] ^ secondId[i])
   for (; i < max; ++i) distance = distance * 256 + 255
   return distance
+  }
 }
 
